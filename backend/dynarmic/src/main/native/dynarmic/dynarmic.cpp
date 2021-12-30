@@ -216,6 +216,11 @@ public:
     }
 
     void InterpreterFallback(u32 pc, std::size_t num_instructions) override {
+        JNIEnv *env;
+        cachedJVM->AttachCurrentThread((void **)&env, NULL);
+        env->CallBooleanMethod(callback, handleInterpreterFallback, pc, num_instructions);
+        cpu->HaltExecution();
+        cachedJVM->DetachCurrentThread();
         fprintf(stderr, "Unicorn fallback @ 0x%x for %lu instructions (instr = 0x%08X)", pc, num_instructions, MemoryReadCode(pc));
         abort();
     }
@@ -427,17 +432,11 @@ public:
     void InterpreterFallback(u64 pc, std::size_t num_instructions) override {
         JNIEnv *env;
         cachedJVM->AttachCurrentThread((void **)&env, NULL);
-        jboolean processed = env->CallBooleanMethod(callback, handleInterpreterFallback, pc, num_instructions);
-        if (env->ExceptionCheck()) {
-            cpu->HaltExecution();
-        }
-        if(processed == JNI_TRUE) {
-            cpu->SetPC(pc + 4);
-        } else {
-            fprintf(stderr, "Unicorn fallback @ 0x%llx for %lu instructions (instr = 0x%08X)", pc, num_instructions, MemoryReadCode(pc));
-            abort();
-        }
+        env->CallBooleanMethod(callback, handleInterpreterFallback, pc, num_instructions);
+        cpu->HaltExecution();
         cachedJVM->DetachCurrentThread();
+        fprintf(stderr, "Unicorn fallback @ 0x%llx for %lu instructions (instr = 0x%08X)", pc, num_instructions, MemoryReadCode(pc));
+        abort();
     }
 
     void ExceptionRaised(u64 pc, Dynarmic::A64::Exception exception) override {
@@ -1254,6 +1253,104 @@ JNIEXPORT jint JNICALL Java_com_github_unidbg_arm_backend_dynarmic_Dynarmic_emu_
     }
   }
   return 0;
+}
+
+/*
+ * Class:     com_github_unidbg_arm_backend_dynarmic_Dynarmic
+ * Method:    context_alloc
+ * Signature: (J)J
+ */
+JNIEXPORT jlong JNICALL Java_com_github_unidbg_arm_backend_dynarmic_Dynarmic_context_1alloc
+  (JNIEnv *env, jclass clazz, jlong handle) {
+  t_dynarmic dynarmic = (t_dynarmic) handle;
+  if(dynarmic->is64Bit) {
+    void *ctx = malloc(sizeof(struct context64));
+    return (jlong) ctx;
+  } else {
+    void *ctx = malloc(sizeof(struct context32));
+    return (jlong) ctx;
+  }
+}
+
+/*
+ * Class:     com_github_unidbg_arm_backend_dynarmic_Dynarmic
+ * Method:    context_restore
+ * Signature: (JJ)V
+ */
+JNIEXPORT void JNICALL Java_com_github_unidbg_arm_backend_dynarmic_Dynarmic_context_1restore
+  (JNIEnv *env, jclass clazz, jlong handle, jlong context) {
+  t_dynarmic dynarmic = (t_dynarmic) handle;
+  if(dynarmic->is64Bit) {
+    Dynarmic::A64::Jit *jit = dynarmic->jit64;
+    t_context64 ctx = (t_context64) context;
+    jit->SetSP(ctx->sp);
+    jit->SetPC(ctx->pc);
+    jit->SetRegisters(ctx->registers);
+    jit->SetVectors(ctx->vectors);
+    jit->SetFpcr(ctx->fpcr);
+    jit->SetFpsr(ctx->fpsr);
+    jit->SetPstate(ctx->pstate);
+
+    DynarmicCallbacks64 *cb = dynarmic->cb64;
+    cb->tpidr_el0 = ctx->tpidr_el0;
+    cb->tpidrro_el0 = ctx->tpidrro_el0;
+  } else {
+    Dynarmic::A32::Jit *jit = dynarmic->jit32;
+    t_context32 ctx = (t_context32) context;
+    jit->Regs() = ctx->regs;
+    jit->ExtRegs() = ctx->extRegs;
+    jit->SetCpsr(ctx->cpsr);
+    jit->SetFpscr(ctx->fpscr);
+
+    DynarmicCallbacks32 *cb = dynarmic->cb32;
+    cb->cp15.get()->uro = ctx->uro;
+  }
+}
+
+/*
+ * Class:     com_github_unidbg_arm_backend_dynarmic_Dynarmic
+ * Method:    context_save
+ * Signature: (JJ)V
+ */
+JNIEXPORT void JNICALL Java_com_github_unidbg_arm_backend_dynarmic_Dynarmic_context_1save
+  (JNIEnv *env, jclass clazz, jlong handle, jlong context) {
+  t_dynarmic dynarmic = (t_dynarmic) handle;
+  if(dynarmic->is64Bit) {
+    Dynarmic::A64::Jit *jit = dynarmic->jit64;
+    t_context64 ctx = (t_context64) context;
+    ctx->sp = jit->GetSP();
+    ctx->pc = jit->GetPC();
+    ctx->registers = jit->GetRegisters();
+    ctx->vectors = jit->GetVectors();
+    ctx->fpcr = jit->GetFpcr();
+    ctx->fpsr = jit->GetFpsr();
+    ctx->pstate = jit->GetPstate();
+
+    DynarmicCallbacks64 *cb = dynarmic->cb64;
+    ctx->tpidr_el0 = cb->tpidr_el0;
+    ctx->tpidrro_el0 = cb->tpidrro_el0;
+  } else {
+    Dynarmic::A32::Jit *jit = dynarmic->jit32;
+    t_context32 ctx = (t_context32) context;
+    ctx->regs = jit->Regs();
+    ctx->extRegs = jit->ExtRegs();
+    ctx->cpsr = jit->Cpsr();
+    ctx->fpscr = jit->Fpscr();
+
+    DynarmicCallbacks32 *cb = dynarmic->cb32;
+    ctx->uro = cb->cp15.get()->uro;
+  }
+}
+
+/*
+ * Class:     com_github_unidbg_arm_backend_dynarmic_Dynarmic
+ * Method:    free
+ * Signature: (J)V
+ */
+JNIEXPORT void JNICALL Java_com_github_unidbg_arm_backend_dynarmic_Dynarmic_free
+  (JNIEnv *env, jclass clazz, jlong context) {
+  void *ctx = (void *) context;
+  free(ctx);
 }
 
 JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved) {

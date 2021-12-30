@@ -11,7 +11,6 @@ import com.github.unidbg.Emulator;
 import com.github.unidbg.Module;
 import com.github.unidbg.Utils;
 import com.github.unidbg.arm.backend.Backend;
-import com.github.unidbg.arm.backend.BackendException;
 import com.github.unidbg.memory.Memory;
 import com.github.unidbg.pointer.UnidbgPointer;
 import com.sun.jna.Pointer;
@@ -966,13 +965,13 @@ public class ARM {
         if (op.length == 2 &&
                 op[0].getType() == Arm64_const.ARM64_OP_REG &&
                 op[1].getType() == Arm64_const.ARM64_OP_MEM) {
-            if (op[0].getValue().getReg() >= Arm64_const.ARM64_REG_W0 && op[0].getValue().getReg() <= Arm64_const.ARM64_REG_W30) {
+            if (op[0].getValue().getUnicornReg() >= Arm64Const.UC_ARM64_REG_W0 && op[0].getValue().getUnicornReg() <= Arm64Const.UC_ARM64_REG_W30) {
                 bytesRead = 4;
             }
             mem = op[1].getValue().getMem();
 
             if (mem.getIndex() == 0) {
-                UnidbgPointer base = UnidbgPointer.register(emulator, mem.getBase());
+                UnidbgPointer base = UnidbgPointer.register(emulator, mem.getUnicornBaseReg());
                 long base_value = base == null ? 0L : base.peer;
                 addr = base_value + mem.getDisp();
             }
@@ -983,12 +982,12 @@ public class ARM {
                 op[0].getType() == Arm64_const.ARM64_OP_REG &&
                 op[1].getType() == Arm64_const.ARM64_OP_MEM &&
                 op[2].getType() == Arm64_const.ARM64_OP_IMM) {
-            if (op[0].getValue().getReg() >= Arm64_const.ARM64_REG_W0 && op[0].getValue().getReg() <= Arm64_const.ARM64_REG_W30) {
+            if (op[0].getValue().getUnicornReg() >= Arm64Const.UC_ARM64_REG_W0 && op[0].getValue().getUnicornReg() <= Arm64Const.UC_ARM64_REG_W30) {
                 bytesRead = 4;
             }
             mem = op[1].getValue().getMem();
             if (mem.getIndex() == 0) {
-                UnidbgPointer base = UnidbgPointer.register(emulator, mem.getBase());
+                UnidbgPointer base = UnidbgPointer.register(emulator, mem.getUnicornBaseReg());
                 addr = base == null ? 0L : base.peer;
                 addr += mem.getDisp();
             }
@@ -1125,14 +1124,14 @@ public class ARM {
                     sb.append(" (-0x").append(Integer.toHexString(-value)).append(")");
                 }
             }
-        } catch (BackendException exception) {
+        } catch (RuntimeException exception) {
             sb.append(" => ").append(exception.getMessage());
         }
     }
 
     private static final Log log = LogFactory.getLog(ARM.class);
 
-    static Arguments initArgs(Emulator<?> emulator, boolean padding, Number... arguments) {
+    public static void initArgs(Emulator<?> emulator, boolean padding, Number... arguments) {
         Backend backend = emulator.getBackend();
         Memory memory = emulator.getMemory();
 
@@ -1230,7 +1229,6 @@ public class ARM {
                 pointer.setInt(0, number.intValue());
             }
         }
-        return args;
     }
 
     public static UnidbgPointer adjust_ip(UnidbgPointer ip) {

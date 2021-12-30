@@ -26,6 +26,12 @@ public abstract class DynarmicBackend extends FastBackend implements Backend, Dy
         }
     }
 
+    @Override
+    public final boolean handleInterpreterFallback(long pc, int num_instructions) {
+        interruptHookNotifier.notifyCallSVC(this, ARMEmulator.EXCP_UDEF, 0);
+        return false;
+    }
+
     private static final int EXCEPTION_BREAKPOINT = 8;
 
     @Override
@@ -68,6 +74,9 @@ public abstract class DynarmicBackend extends FastBackend implements Backend, Dy
 
     @Override
     public final synchronized void emu_start(long begin, long until, long timeout, long count) throws BackendException {
+        if (timeout != 0 || count != 0) {
+            throw new UnsupportedOperationException();
+        }
         if (log.isDebugEnabled()) {
             log.debug("emu_start begin=0x" + Long.toHexString(begin) + ", until=0x" + Long.toHexString(until) + ", timeout=" + timeout + ", count=" + count);
         }
@@ -185,23 +194,22 @@ public abstract class DynarmicBackend extends FastBackend implements Backend, Dy
     }
 
     @Override
-    public void context_restore(long context) {
-        throw new UnsupportedOperationException();
+    public long context_alloc() {
+        return dynarmic.context_alloc();
     }
 
     @Override
     public void context_free(long context) {
-        throw new UnsupportedOperationException();
+        Dynarmic.free(context);
     }
 
     @Override
     public void context_save(long context) {
-        throw new UnsupportedOperationException();
+        dynarmic.context_save(context);
     }
 
     @Override
-    public long context_alloc() {
-        throw new UnsupportedOperationException();
+    public void context_restore(long context) {
+        dynarmic.context_restore(context);
     }
-
 }

@@ -1,6 +1,5 @@
 package com.github.unidbg.linux;
 
-import com.github.unidbg.AbstractEmulator;
 import com.github.unidbg.Alignment;
 import com.github.unidbg.Emulator;
 import com.github.unidbg.LibraryResolver;
@@ -14,6 +13,7 @@ import com.github.unidbg.file.linux.IOConstants;
 import com.github.unidbg.hook.HookListener;
 import com.github.unidbg.linux.android.AndroidResolver;
 import com.github.unidbg.linux.android.ElfLibraryFile;
+import com.github.unidbg.linux.thread.PThreadInternal;
 import com.github.unidbg.memory.MemRegion;
 import com.github.unidbg.memory.Memory;
 import com.github.unidbg.memory.MemoryAllocBlock;
@@ -25,8 +25,8 @@ import com.github.unidbg.spi.AbstractLoader;
 import com.github.unidbg.spi.InitFunction;
 import com.github.unidbg.spi.LibraryFile;
 import com.github.unidbg.spi.Loader;
+import com.github.unidbg.thread.Task;
 import com.github.unidbg.unix.IO;
-import com.github.unidbg.unix.Thread;
 import com.github.unidbg.unix.UnixSyscallHandler;
 import com.github.unidbg.virtualmodule.VirtualSymbol;
 import com.sun.jna.Pointer;
@@ -77,7 +77,8 @@ public class AndroidElfLoader extends AbstractLoader<AndroidFileIO> implements M
         this.environ = initializeTLS(new String[] {
                 "ANDROID_DATA=/data",
                 "ANDROID_ROOT=/system",
-                "PATH=/sbin:/vendor/bin:/system/sbin:/system/bin:/system/xbin"
+                "PATH=/sbin:/vendor/bin:/system/sbin:/system/bin:/system/xbin",
+                "NO_ADDR_COMPAT_LAYOUT_FIXUP=1"
         });
         this.setErrno(0);
     }
@@ -100,33 +101,11 @@ public class AndroidElfLoader extends AbstractLoader<AndroidFileIO> implements M
         return new ElfLibraryFile(file, emulator.is64Bit());
     }
 
-    @Override
-    public boolean hasThread(int threadId) {
-        return syscallHandler.threadMap.containsKey(threadId);
-    }
-
-    @Override
-    public void runLastThread(long timeout) {
-        runThread(syscallHandler.lastThread, timeout);
-    }
-
-    @Override
-    public void runThread(int threadId, long timeout) {
-        try {
-            emulator.setTimeout(timeout);
-            Thread thread = syscallHandler.threadMap.get(threadId);
-            if (thread != null) {
-                thread.runThread(emulator, __thread_entry, timeout);
-            } else {
-                throw new IllegalStateException("thread: " + threadId + " not exits");
-            }
-        } finally {
-            emulator.setTimeout(AbstractEmulator.DEFAULT_TIMEOUT);
-        }
-    }
-
     private UnidbgPointer initializeTLS(String[] envs) {
         final Pointer thread = allocateStack(0x400); // reserve space for pthread_internal_t
+        PThreadInternal pThread = new PThreadInternal(thread);
+        pThread.tid = emulator.getPid();
+        pThread.pack();
 
         final Pointer __stack_chk_guard = allocateStack(emulator.getPointerSize());
 
@@ -672,7 +651,7 @@ public class AndroidElfLoader extends AbstractLoader<AndroidFileIO> implements M
         return module;
     }
 
-    private long __thread_entry;
+    public long __thread_entry;
 
     private String maxSoName;
     private long maxSizeOfSo;
@@ -770,7 +749,7 @@ public class AndroidElfLoader extends AbstractLoader<AndroidFileIO> implements M
         }
         try {
             FileIO file;
-            if (start == 0 && fd > 0 && (file = syscallHandler.fdMap.get(fd)) != null) {
+            if (start == 0 && fd > 0 && (file = syscallHandler.getFileIO(fd)) != null) {
                 long addr = allocateMapAddress(0, aligned);
                 if (log.isDebugEnabled()) {
                     log.debug("mmap2 addr=0x" + Long.toHexString(addr) + ", mmapBaseAddress=0x" + Long.toHexString(mmapBaseAddress));
@@ -790,8 +769,20 @@ public class AndroidElfLoader extends AbstractLoader<AndroidFileIO> implements M
 
     private Pointer errno;
 
+    private int lastErrno;
+
+    @Override
+    public int getLastErrno() {
+        return lastErrno;
+    }
+
     @Override
     public void setErrno(int errno) {
+        this.lastErrno = errno;
+        Task task = emulator.get(Task.TASK_KEY);
+        if (task != null && task.setErrno(emulator, errno)) {
+            return;
+        }
         this.errno.setInt(0, errno);
     }
 

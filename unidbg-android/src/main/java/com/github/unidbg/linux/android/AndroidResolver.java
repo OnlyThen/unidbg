@@ -6,14 +6,14 @@ import com.github.unidbg.file.FileResult;
 import com.github.unidbg.file.FileSystem;
 import com.github.unidbg.file.IOResolver;
 import com.github.unidbg.file.linux.AndroidFileIO;
-import com.github.unidbg.hook.hookzz.IHookZz;
+import com.github.unidbg.hook.InlineHook;
 import com.github.unidbg.linux.file.DirectoryFileIO;
 import com.github.unidbg.linux.file.LogCatFileIO;
 import com.github.unidbg.linux.file.SimpleFileIO;
 import com.github.unidbg.linux.thread.ThreadJoin19;
 import com.github.unidbg.linux.thread.ThreadJoin23;
-import com.github.unidbg.unix.ThreadJoinVisitor;
 import com.github.unidbg.spi.LibraryFile;
+import com.github.unidbg.unix.ThreadJoinVisitor;
 import com.github.unidbg.utils.ResourceUtils;
 import org.apache.commons.io.FilenameUtils;
 
@@ -33,13 +33,13 @@ public class AndroidResolver implements LibraryResolver, IOResolver<AndroidFileI
         this.needed = needed == null ? null : Arrays.asList(needed);
     }
 
-    public void patchThread(Emulator<?> emulator, IHookZz hookZz, ThreadJoinVisitor visitor) {
+    public void patchThread(Emulator<?> emulator, InlineHook inlineHook, ThreadJoinVisitor visitor) {
         switch (sdk) {
             case 19:
-                ThreadJoin19.patch(emulator, hookZz, visitor);
+                ThreadJoin19.patch(emulator, inlineHook, visitor);
                 break;
             case 23:
-                ThreadJoin23.patch(emulator, hookZz, visitor);
+                ThreadJoin23.patch(emulator, inlineHook, visitor);
                 break;
             default:
                 throw new UnsupportedOperationException();
@@ -60,13 +60,17 @@ public class AndroidResolver implements LibraryResolver, IOResolver<AndroidFileI
             return null;
         }
 
-        return resolveLibrary(emulator, libraryName, sdk);
+        return resolveLibrary(emulator, libraryName, sdk, getClass());
     }
 
     static LibraryFile resolveLibrary(Emulator<?> emulator, String libraryName, int sdk) {
+        return resolveLibrary(emulator, libraryName, sdk, AndroidResolver.class);
+    }
+
+    protected static LibraryFile resolveLibrary(Emulator<?> emulator, String libraryName, int sdk, Class<?> resClass) {
         final String lib = emulator.is32Bit() ? "lib" : "lib64";
         String name = "/android/sdk" + sdk + "/" + lib + "/" + libraryName.replace('+', 'p');
-        URL url = AndroidResolver.class.getResource(name);
+        URL url = resClass.getResource(name);
         if (url != null) {
             return new URLibraryFile(url, libraryName, sdk, emulator.is64Bit());
         }
@@ -98,7 +102,7 @@ public class AndroidResolver implements LibraryResolver, IOResolver<AndroidFileI
         }
 
         String androidResource = FilenameUtils.normalize("/android/sdk" + sdk + "/" + path, true);
-        File file = ResourceUtils.extractResource(AndroidResolver.class, androidResource, path);
+        File file = ResourceUtils.extractResource(getClass(), androidResource, path);
         if (file != null) {
             return FileResult.fallback(createFileIO(file, path, oflags));
         }
@@ -113,5 +117,4 @@ public class AndroidResolver implements LibraryResolver, IOResolver<AndroidFileI
 
         return null;
     }
-
 }

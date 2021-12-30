@@ -11,6 +11,16 @@ public class Pthread64 extends Pthread {
         super(p);
     }
 
+    @Override
+    public void setThreadId(int threadId) {
+        this.thread_id = threadId;
+    }
+
+    @Override
+    public int getThreadId() {
+        return (int) thread_id;
+    }
+
     public long sig; // _PTHREAD_SIG
     public Pointer __cleanup_stack;
     public int childrun;
@@ -33,9 +43,30 @@ public class Pthread64 extends Pthread {
     public Pointer stackaddr; // base of the stack
     public long stacksize; // size of stack (page multiple and >= PTHREAD_STACK_MIN)
 
+    @Override
+    public void setStack(Pointer stackAddress, long stackSize) {
+        this.stackaddr = stackAddress;
+        this.stacksize = stackSize;
+    }
+
     public Pointer freeaddr; // stack/thread allocation base address
     public long freesize; // stack/thread allocation size
     public long guardsize; // guard page size in bytes
+
+    @Override
+    public void setSig(long sig) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void setDetached(int detached) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void setExitValue(Pointer pointer) {
+        throw new UnsupportedOperationException();
+    }
 
     @Override
     protected List<String> getFieldOrder() {

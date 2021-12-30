@@ -215,6 +215,9 @@ public abstract class KvmBackend extends FastBackend implements Backend, KvmCall
 
     @Override
     public synchronized void emu_start(long begin, long until, long timeout, long count) throws BackendException {
+        if (timeout != 0 || count != 0) {
+            throw new UnsupportedOperationException();
+        }
         if (log.isDebugEnabled()) {
             log.debug("emu_start begin=0x" + Long.toHexString(begin) + ", until=0x" + Long.toHexString(until) + ", timeout=" + timeout + ", count=" + count);
         }
@@ -276,17 +279,17 @@ public abstract class KvmBackend extends FastBackend implements Backend, KvmCall
     }
 
     @Override
+    public void context_free(long context) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
     public void context_save(long context) {
         throw new UnsupportedOperationException();
     }
 
     @Override
     public long context_alloc() {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public void context_free(long context) {
         throw new UnsupportedOperationException();
     }
 }

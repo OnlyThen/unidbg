@@ -181,11 +181,15 @@ public class LinuxModule extends Module {
             if (symbolTableSection != null && elfSymbol == null) {
                 elfSymbol = symbolTableSection.getELFSymbolByAddr(soaddr);
             }
+            Symbol symbol = null;
             if (elfSymbol != null) {
-                return new LinuxSymbol(this, elfSymbol);
-            } else {
-                return null;
+                symbol = new LinuxSymbol(this, elfSymbol);
             }
+            long entry = base + entryPoint;
+            if (addr >= entry && (symbol == null || entry > symbol.getAddress())) {
+                symbol = new VirtualSymbol("start", this, entry);
+            }
+            return symbol;
         } catch (IOException e) {
             throw new IllegalStateException(e);
         }
@@ -249,7 +253,7 @@ public class LinuxModule extends Module {
     }
 
     @Override
-    public Number[] callFunction(Emulator<?> emulator, long offset, Object... args) {
+    public Number callFunction(Emulator<?> emulator, long offset, Object... args) {
         return emulateFunction(emulator, base + offset, args);
     }
 
