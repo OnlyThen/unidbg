@@ -40,7 +40,7 @@ import com.github.unidbg.ios.struct.kernel.MachPortSetAttributesReply;
 import com.github.unidbg.ios.struct.kernel.MachPortSetAttributesRequest;
 import com.github.unidbg.ios.struct.kernel.MachPortTypeReply;
 import com.github.unidbg.ios.struct.kernel.MachPortTypeRequest;
-import com.github.unidbg.ios.struct.kernel.MachPortsLookup64Reply;
+import com.github.unidbg.ios.struct.kernel.MachPortsLookupReply64;
 import com.github.unidbg.ios.struct.kernel.MachTimebaseInfo;
 import com.github.unidbg.ios.struct.kernel.NotifyServerCancelReply;
 import com.github.unidbg.ios.struct.kernel.NotifyServerCancelRequest;
@@ -355,6 +355,9 @@ public class ARM64SyscallHandler extends DarwinSyscallHandler {
                     syscall = "posix_madvise";
                     backend.reg_write(Arm64Const.UC_ARM64_REG_X0, 0);
                     return;
+                case 89:
+                    backend.reg_write(Arm64Const.UC_ARM64_REG_X0, getdtablesize());
+                    return;
                 case 92:
                 case 406: // fcntl_NOCANCEL
                     backend.reg_write(Arm64Const.UC_ARM64_REG_X0, fcntl(emulator));
@@ -571,6 +574,10 @@ public class ARM64SyscallHandler extends DarwinSyscallHandler {
         if (exception instanceof RuntimeException) {
             throw (RuntimeException) exception;
         }
+    }
+
+    private int getdtablesize() {
+        return 0x1000;
     }
 
     private static final int CS_OPS_STATUS = 0; /* return status */
@@ -2473,7 +2480,7 @@ public class ARM64SyscallHandler extends DarwinSyscallHandler {
             }
             case 3404: // mach_ports_lookup
             {
-                MachPortsLookup64Reply reply = new MachPortsLookup64Reply(request);
+                MachPortsLookupReply64 reply = new MachPortsLookupReply64(request);
                 reply.unpack();
 
                 header.msgh_bits = (header.msgh_bits & 0xff) | MACH_MSGH_BITS_COMPLEX;

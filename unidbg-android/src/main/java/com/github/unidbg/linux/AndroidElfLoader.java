@@ -103,7 +103,7 @@ public class AndroidElfLoader extends AbstractLoader<AndroidFileIO> implements M
 
     private UnidbgPointer initializeTLS(String[] envs) {
         final Pointer thread = allocateStack(0x400); // reserve space for pthread_internal_t
-        PThreadInternal pThread = new PThreadInternal(thread);
+        PThreadInternal pThread = PThreadInternal.create(emulator, thread);
         pThread.tid = emulator.getPid();
         pThread.pack();
 
@@ -617,13 +617,8 @@ public class AndroidElfLoader extends AbstractLoader<AndroidFileIO> implements M
             symbolTableSection = elfFile.getSymbolTableSection();
         } catch(Throwable ignored) {}
         LinuxModule module = new LinuxModule(load_base, size, soName, dynsym, list, initFunctionList, neededLibraries, regions,
-                armExIdx, ehFrameHeader, symbolTableSection, elfFile, dynamicStructure);
+                armExIdx, ehFrameHeader, symbolTableSection, elfFile, dynamicStructure, libraryFile);
         if ("libc.so".equals(soName)) { // libc
-            ElfSymbol __thread_entry = module.getELFSymbolByName("__thread_entry");
-            if (__thread_entry != null) {
-                this.__thread_entry = module.base + __thread_entry.value;
-            }
-
             malloc = module.findSymbolByName("malloc");
             free = module.findSymbolByName("free");
         }
@@ -650,8 +645,6 @@ public class AndroidElfLoader extends AbstractLoader<AndroidFileIO> implements M
         }
         return module;
     }
-
-    public long __thread_entry;
 
     private String maxSoName;
     private long maxSizeOfSo;

@@ -347,8 +347,7 @@ public abstract class DarwinSyscallHandler extends UnixSyscallHandler<DarwinFile
         }
         if (sig > 0) {
             SigAction action = sigActionMap.get(sig);
-            if (action != null &&
-                    emulator.getThreadDispatcher().sendSignal(threadPort, new SignalTask(sig, action))) {
+            if (emulator.getThreadDispatcher().sendSignal(threadPort, sig, action == null ? null : new SignalTask(sig, action))) {
                 throw new ThreadContextSwitchException().setReturnValue(0);
             }
         }
@@ -377,6 +376,11 @@ public abstract class DarwinSyscallHandler extends UnixSyscallHandler<DarwinFile
     protected int semwait_signal(Emulator<?> emulator, RunnableTask runningTask, int cond_sem, int mutex_sem, int timeout, int relative,
                                  long tv_sec, int tv_nsec) {
         if (timeout == 1 && relative == 1 && (tv_sec > 0 || tv_nsec > 0)) {
+            if (threadDispatcherEnabled) {
+                runningTask.setWaiter(new SemWaiter(cond_sem, semaphoreMap, tv_sec, tv_nsec));
+                throw new ThreadContextSwitchException().setReturnValue(0);
+            }
+
             try {
                 Thread.sleep(tv_sec * 1000L + tv_nsec / 1000L, tv_nsec % 1000);
                 emulator.getMemory().setErrno(ETIMEDOUT);
@@ -472,8 +476,8 @@ public abstract class DarwinSyscallHandler extends UnixSyscallHandler<DarwinFile
 
     @Override
     protected int sigaction(Emulator<?> emulator, int signum, Pointer act, Pointer oldact) {
-        SigAction action = SigAction.create(act);
-        SigAction oldAction = SigAction.create(oldact);
+        SigAction action = SigAction.create(emulator, act);
+        SigAction oldAction = SigAction.create(emulator, oldact);
         if (log.isDebugEnabled()) {
             log.debug("sigaction signum=" + signum + ", action=" + action + ", oldAction=" + oldAction);
         }
@@ -482,7 +486,7 @@ public abstract class DarwinSyscallHandler extends UnixSyscallHandler<DarwinFile
             if (lastAction == null) {
                 oldact.write(0, new byte[oldAction.size()], 0, oldAction.size());
             } else {
-                oldAction.sa_handler = lastAction.sa_handler;
+                oldAction.setSaHandler(lastAction.getSaHandler());
                 oldAction.sa_mask = lastAction.sa_mask;
                 oldAction.sa_flags = lastAction.sa_flags;
                 oldAction.pack();
@@ -660,7 +664,7 @@ public abstract class DarwinSyscallHandler extends UnixSyscallHandler<DarwinFile
             thread = memoryBlock.getPointer().share(pageSize + stackSize, 0);
 
             Pthread pThread = Pthread.create(emulator, thread);
-            pThread.machThreadSelf = UnidbgPointer.pointer(emulator, threadId);
+            pThread.setMachThreadSelf(threadId);
             pThread.pack();
 
             String msg = "bsdthread_create start_routine=" + start_routine + ", arg=" + arg + ", stack=" + stack + ", thread=" + thread + ", flags=0x" + Integer.toHexString(flags);

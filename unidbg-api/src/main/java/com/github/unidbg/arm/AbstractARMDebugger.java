@@ -19,6 +19,7 @@ import com.github.unidbg.debugger.BreakPointCallback;
 import com.github.unidbg.debugger.DebugListener;
 import com.github.unidbg.debugger.DebugRunnable;
 import com.github.unidbg.debugger.Debugger;
+import com.github.unidbg.debugger.FunctionCallListener;
 import com.github.unidbg.memory.MemRegion;
 import com.github.unidbg.memory.Memory;
 import com.github.unidbg.memory.MemoryMap;
@@ -139,6 +140,16 @@ public abstract class AbstractARMDebugger implements Debugger {
         BreakPoint breakPoint = emulator.getBackend().addBreakPoint(address, callback, thumb);
         breakMap.put(address, breakPoint);
         return breakPoint;
+    }
+
+    @Override
+    public void traceFunctionCall(FunctionCallListener listener) {
+        traceFunctionCall(null, listener);
+    }
+
+    @Override
+    public void traceFunctionCall(Module module, FunctionCallListener listener) {
+        throw new UnsupportedOperationException();
     }
 
     protected abstract Keystone createKeystone(boolean isThumb);
@@ -345,7 +356,7 @@ public abstract class AbstractARMDebugger implements Debugger {
             } else if (stringType == StringType.std_string) {
                 StdString string = StdString.createStdString(emulator, pointer);
                 long size = string.getDataSize();
-                byte[] data = string.getData();
+                byte[] data = string.getData(emulator);
                 Inspector.inspect(data, size >= 1024 ? (label + ", hex=" + Hex.encodeHexString(data) + ", std=" + new String(data, StandardCharsets.UTF_8)) : label);
             } else {
                 throw new UnsupportedOperationException("stringType=" + stringType);
@@ -806,7 +817,7 @@ public abstract class AbstractARMDebugger implements Debugger {
         if (line.startsWith("p")) {
             long originalAddress = address;
             String assembly = line.substring(1).trim();
-            boolean isThumb = (address & 1) != 0;
+            boolean isThumb = ARM.isThumb(backend);
             try (Keystone keystone = createKeystone(isThumb)) {
                 KeystoneEncoded encoded = keystone.assemble(assembly);
                 byte[] code = encoded.getMachineCode();
@@ -987,7 +998,7 @@ public abstract class AbstractARMDebugger implements Debugger {
                 if (name.length() > maxLength) {
                     name = name.substring(name.length() - maxLength);
                 }
-                module = new Module(name, region.begin, region.end - region.begin, Collections.<String, Module>emptyMap(), Collections.<MemRegion>emptyList()) {
+                module = new Module(name, region.begin, region.end - region.begin, Collections.<String, Module>emptyMap(), Collections.<MemRegion>emptyList(), null) {
                     @Override
                     public Number callFunction(Emulator<?> emulator, long offset, Object... args) {
                         throw new UnsupportedOperationException();

@@ -3,13 +3,18 @@ package com.github.unidbg.thread;
 import com.github.unidbg.AbstractEmulator;
 import com.github.unidbg.Emulator;
 import com.github.unidbg.arm.ARM;
+import com.github.unidbg.arm.FunctionCall;
 import com.github.unidbg.arm.backend.Backend;
 import com.github.unidbg.memory.MemoryBlock;
 import com.github.unidbg.pointer.UnidbgPointer;
+import org.apache.commons.collections4.Bag;
+import org.apache.commons.collections4.bag.HashBag;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import unicorn.Arm64Const;
 import unicorn.ArmConst;
+
+import java.util.Stack;
 
 public abstract class BaseTask implements RunnableTask {
 
@@ -133,5 +138,50 @@ public abstract class BaseTask implements RunnableTask {
     @Override
     public void setDestroyListener(DestroyListener listener) {
         this.destroyListener = listener;
+    }
+
+    private final Stack<FunctionCall> stack = new Stack<>();
+    private final Bag<Long> bag = new HashBag<>();
+
+    @Override
+    public void pushFunction(Emulator<?> emulator, FunctionCall call) {
+        stack.push(call);
+        bag.add(call.returnAddress, 1);
+
+        if (log.isDebugEnabled()) {
+            log.debug("pushFunction call=" + call.toReadableString(emulator) + ", bagCount=" + bag.getCount(call.returnAddress));
+        }
+    }
+
+    @Override
+    public FunctionCall popFunction(Emulator<?> emulator, long address) {
+        if (!bag.contains(address)) {
+            return null;
+        }
+
+        FunctionCall call;
+        if (emulator.is64Bit()) { // check LR for aarch64
+            call = stack.peek();
+            long lr = emulator.getContext().getLR();
+            if (lr != call.returnAddress) {
+                return null;
+            }
+
+            bag.remove(address, 1);
+            stack.pop();
+        } else {
+            bag.remove(address, 1);
+            call = stack.pop();
+        }
+
+        if (log.isDebugEnabled()) {
+            log.debug("popFunction call=" + call.toReadableString(emulator) + ", address=" + UnidbgPointer.pointer(emulator, address) + ", stackSize=" + stack.size() + ", bagCount=" + bag.getCount(address));
+        }
+        if (call.returnAddress != address) {
+            for (FunctionCall fc : stack) {
+                log.warn("stackCall call=" + fc.toReadableString(emulator) + ", bagCount=" + bag.getCount(fc.returnAddress));
+            }
+        }
+        return call;
     }
 }

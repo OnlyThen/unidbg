@@ -731,7 +731,7 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
         MachOModule module = new MachOModule(machO, dyId, loadBase, loadSize, new HashMap<String, Module>(neededLibraries), regions,
                 symtabCommand, dysymtabCommand, buffer, lazyLoadNeededList, upwardLibraries, exportModules, dylibPath, emulator,
                 dyldInfoCommand, null, null, vars, machHeader, isExecutable, this, hookListeners, ordinalList,
-                fEHFrameSection, fUnwindInfoSection, objcSections, segments.toArray(new Segment[0]));
+                fEHFrameSection, fUnwindInfoSection, objcSections, segments.toArray(new Segment[0]), libraryFile);
         processRebase(log, module);
         if (isExecutable) {
             setExecuteModule(module);
@@ -1649,8 +1649,8 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
             int elementSize = UnidbgStructure.calculateSize(DyldImageInfo64.class);
             Pointer pointer = emulator.getSvcMemory().allocate(elementSize, "notifySingle");
             DyldImageInfo64 info = new DyldImageInfo64(pointer);
-            info.imageFilePath = module.createPathMemory(emulator.getSvcMemory());
-            info.imageLoadAddress = UnidbgPointer.pointer(emulator, module.machHeader);
+            info.imageFilePath = UnidbgPointer.nativeValue(module.createPathMemory(emulator.getSvcMemory()));
+            info.imageLoadAddress = module.machHeader;
             info.imageFileModDate = 0;
             info.pack();
             return info;
@@ -1658,8 +1658,8 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
             int elementSize = UnidbgStructure.calculateSize(DyldImageInfo32.class);
             Pointer pointer = emulator.getSvcMemory().allocate(elementSize, "notifySingle");
             DyldImageInfo32 info = new DyldImageInfo32(pointer);
-            info.imageFilePath = module.createPathMemory(emulator.getSvcMemory());
-            info.imageLoadAddress = UnidbgPointer.pointer(emulator, module.machHeader);
+            info.imageFilePath = (int) (UnidbgPointer.nativeValue(module.createPathMemory(emulator.getSvcMemory())));
+            info.imageLoadAddress = (int) module.machHeader;
             info.imageFileModDate = 0;
             info.pack();
             return info;
