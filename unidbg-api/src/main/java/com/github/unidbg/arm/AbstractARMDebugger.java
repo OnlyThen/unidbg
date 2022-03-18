@@ -24,6 +24,7 @@ import com.github.unidbg.memory.MemRegion;
 import com.github.unidbg.memory.Memory;
 import com.github.unidbg.memory.MemoryMap;
 import com.github.unidbg.pointer.UnidbgPointer;
+import com.github.unidbg.thread.Task;
 import com.github.unidbg.unix.struct.StdString;
 import com.github.unidbg.unwind.Unwinder;
 import com.github.unidbg.utils.Inspector;
@@ -459,6 +460,12 @@ public abstract class AbstractARMDebugger implements Debugger {
             System.gc();
             return false;
         }
+        if ("threads".equals(line)) {
+            for (Task task : emulator.getThreadDispatcher().getTaskList()) {
+                System.out.println(task.getId() + ": " + task);
+            }
+            return false;
+        }
         if (runnable == null || callbackRunning) {
             if ("c".equals(line)) { // continue
                 return true;
@@ -658,7 +665,7 @@ public abstract class AbstractARMDebugger implements Debugger {
             if (traceHook != null) {
                 traceHook.detach();
             }
-            traceHook = new AssemblyCodeDumper(emulator);
+            traceHookRedirectStream = null;
             long begin, end;
             if (matcher.find()) {
                 begin = Utils.parseNumber(matcher.group(1));
@@ -673,7 +680,6 @@ public abstract class AbstractARMDebugger implements Debugger {
                     }
                     traceHookRedirectStream = new PrintStream(new BufferedOutputStream(new FileOutputStream(traceFile)), true);
                     traceHookRedirectStream.printf("[%s]Start traceCode%n", new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date()));
-                    traceHook.setRedirect(traceHookRedirectStream);
                     System.out.printf("Set trace all instructions success with trace file: %s.%n", traceFile.getAbsolutePath());
                 } else {
                     boolean needTraceFile = end - begin > traceSize;
@@ -684,7 +690,6 @@ public abstract class AbstractARMDebugger implements Debugger {
                         }
                         traceHookRedirectStream = new PrintStream(new BufferedOutputStream(new FileOutputStream(traceFile)), true);
                         traceHookRedirectStream.printf("[%s]Start traceCode: 0x%x-0x%x%n", new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date()), begin, end);
-                        traceHook.setRedirect(traceHookRedirectStream);
                         System.out.printf("Set trace 0x%x->0x%x instructions success with trace file: %s.%n", begin, end, traceFile.getAbsolutePath());
                     } else {
                         System.out.printf("Set trace 0x%x->0x%x instructions success.%n", begin, end);
@@ -712,7 +717,6 @@ public abstract class AbstractARMDebugger implements Debugger {
                             }
                             traceHookRedirectStream = new PrintStream(new BufferedOutputStream(new FileOutputStream(outFile)), true);
                             traceHookRedirectStream.printf("[%s]Start trace %s%n", new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date()), module == null ? "all" : module);
-                            traceHook.setRedirect(traceHookRedirectStream);
                             traceFile = outFile;
                         } catch (IOException e) {
                             System.err.println("Set trace redirect out file failed: " + outFile);
@@ -724,7 +728,10 @@ public abstract class AbstractARMDebugger implements Debugger {
                 end = module == null ? 0 : (module.base + module.size);
                 System.out.println("Set trace " + (module == null ? "all" : module) + " instructions success" + (traceFile == null ? "." : (" with trace file: " + traceFile.getAbsolutePath())));
             }
-            traceHook.initialize(begin, end, null);
+            traceHook = new AssemblyCodeDumper(emulator, begin, end, null);
+            if (traceHookRedirectStream != null) {
+                traceHook.setRedirect(traceHookRedirectStream);
+            }
             emulator.getBackend().hook_add_new(traceHook, begin, end, emulator);
             return false;
         }
@@ -781,7 +788,7 @@ public abstract class AbstractARMDebugger implements Debugger {
                         sb.append('*');
                     }
                 } else {
-                    sb.append(ARM.assembleDetail(emulator, ins, address, bp.isThumb(), bp.isTemporary()));
+                    sb.append(ARM.assembleDetail(emulator, ins, address, bp.isThumb(), bp.isTemporary(), memory.getMaxLengthLibraryName().length()));
                 }
                 sb.append("\n");
             }
@@ -909,6 +916,7 @@ public abstract class AbstractARMDebugger implements Debugger {
     final long disassemble(Emulator<?> emulator, long address, int size, boolean thumb) {
         long next = 0;
         boolean on = false;
+        int maxLength = emulator.getMemory().getMaxLengthLibraryName().length();
         StringBuilder sb = new StringBuilder();
         {
             Module module = findModuleByAddress(emulator, address);
@@ -935,7 +943,7 @@ public abstract class AbstractARMDebugger implements Debugger {
                     on = false;
                 }
             }
-            sb.append(ARM.assembleDetail(emulator, ins, history.address, history.thumb, on)).append('\n');
+            sb.append(ARM.assembleDetail(emulator, ins, history.address, history.thumb, on, maxLength)).append('\n');
             nextAddr += ins.getBytes().length;
         }
         Instruction[] insns = emulator.disassemble(nextAddr, 4 * 15, 15);
@@ -950,7 +958,7 @@ public abstract class AbstractARMDebugger implements Debugger {
                     on = false;
                 }
             }
-            sb.append(ARM.assembleDetail(emulator, ins, nextAddr, thumb, on)).append('\n');
+            sb.append(ARM.assembleDetail(emulator, ins, nextAddr, thumb, on, maxLength)).append('\n');
             nextAddr += ins.getSize();
         }
         System.out.println(sb);
@@ -981,7 +989,7 @@ public abstract class AbstractARMDebugger implements Debugger {
         Instruction[] insns = emulator.disassemble(nextAddr, code, thumb, 0);
         for (Instruction ins : insns) {
             sb.append("    ");
-            sb.append(ARM.assembleDetail(emulator, ins, nextAddr, thumb, false)).append('\n');
+            sb.append(ARM.assembleDetail(emulator, ins, nextAddr, thumb, false, emulator.getMemory().getMaxLengthLibraryName().length())).append('\n');
             nextAddr += ins.getSize();
         }
         System.out.println(sb);

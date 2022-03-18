@@ -288,8 +288,7 @@ public abstract class AbstractEmulator<T extends NewFileIO> implements Emulator<
 
     @Override
     public TraceHook traceCode(long begin, long end, TraceCodeListener listener) {
-        AssemblyCodeDumper hook = new AssemblyCodeDumper(this);
-        hook.initialize(begin, end, listener);
+        AssemblyCodeDumper hook = new AssemblyCodeDumper(this, begin, end, listener);
         backend.hook_add_new(hook, begin, end, this);
         return hook;
     }
@@ -406,7 +405,7 @@ public abstract class AbstractEmulator<T extends NewFileIO> implements Emulator<
 
     private int handleEmuException(RuntimeException e, Pointer pointer, long start) {
         boolean enterDebug = log.isDebugEnabled();
-        if (enterDebug) {
+        if (enterDebug || !log.isWarnEnabled()) {
             e.printStackTrace();
             attach().debug();
         } else {
