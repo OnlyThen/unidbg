@@ -242,6 +242,11 @@ public class SimpleFileIO extends BaseDarwinFileIO implements FileIO {
     }
 
     @Override
+    public int removexattr(String name) {
+        return removexattr(file, name);
+    }
+
+    @Override
     public int setxattr(String name, byte[] data) {
         return setxattr(file, name, data);
     }
@@ -259,5 +264,15 @@ public class SimpleFileIO extends BaseDarwinFileIO implements FileIO {
     @Override
     public int chflags(int flags) {
         return chflags(file, flags);
+    }
+
+    @Override
+    public String getPath() {
+        return path;
+    }
+
+    @Override
+    public int getxattr(Emulator<?> emulator, String name, Pointer value, int size) {
+        return getxattr(emulator, file, name, value, size);
     }
 }

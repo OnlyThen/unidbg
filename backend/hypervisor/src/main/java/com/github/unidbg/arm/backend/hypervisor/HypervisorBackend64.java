@@ -220,18 +220,22 @@ public class HypervisorBackend64 extends HypervisorBackend {
     private void onWatchpoint(long esr, long address) {
         boolean write = ((esr >> 6) & 1) == 1;
         int status = (int) (esr & 0x3f);
-        boolean isWrite = ((esr >> 6) & 1) != 0;
         if (log.isDebugEnabled()) {
             log.debug("onWatchpoint write=" + write + ", address=0x" + Long.toHexString(address) + ", status=0x" + Integer.toHexString(status));
         }
+        boolean hit = false;
         for (int i = 0; i < watchpoints.length; i++) {
-            if (watchpoints[i] != null && watchpoints[i].contains(address, isWrite)) {
-                watchpoints[i].onHit(this, address, isWrite);
-                installRestoreWatchpoint(i, watchpoints[i]);
-                return;
+            if (watchpoints[i] != null && watchpoints[i].contains(address, write)) {
+                hit = true;
+                if (watchpoints[i].onHit(this, address, write)) {
+                    installRestoreWatchpoint(i, watchpoints[i]);
+                    return;
+                }
             }
         }
-        interruptHookNotifier.notifyCallSVC(this, ARMEmulator.EXCP_BKPT, status);
+        if (!hit) {
+            interruptHookNotifier.notifyCallSVC(this, ARMEmulator.EXCP_BKPT, status);
+        }
     }
 
     private void installRestoreWatchpoint(int n, final HypervisorWatchpoint watchpoint) {
@@ -281,7 +285,7 @@ public class HypervisorBackend64 extends HypervisorBackend {
         }
         OpInfo opInfo = (OpInfo) insn.getOperands();
         if (opInfo.isUpdateFlags() || opInfo.isWriteBack() || !insn.getMnemonic().startsWith("ldr") || vaddr < _COMM_PAGE64_BASE_ADDRESS) {
-            throw new UnsupportedOperationException();
+            throw new UnsupportedOperationException("insn=" + insn + ", vaddr=0x" + Long.toHexString(vaddr));
         }
         Operand[] op = opInfo.getOperands();
         int offset = (int) (vaddr - _COMM_PAGE64_BASE_ADDRESS);
